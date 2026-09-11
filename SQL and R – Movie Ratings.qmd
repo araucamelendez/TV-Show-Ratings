@@ -1,0 +1,145 @@
+---
+title: "SQL and R – Movie Ratings"
+author: "Arauca Melendez"
+format: html
+editor: visual
+---
+
+# Introduction
+
+For this project, I wanted to see how people rated six popular TV shows. I used The Last of Us, Wednesday, The Bear, Bridgerton, Stranger Things, and Only Murders in the Building. I collected ratings on a scale from 1 to 5 and used PostgreSQL to store the data. I then connected the database to R to look at the ratings and create charts.
+
+# Data Collection
+
+I asked five people to rate the shows they had watched on a scale from 1 to 5, with 1 being the lowest rating and 5 being the highest. Since not everyone had watched every show, some ratings were missing. I left those ratings blank instead of giving them a score of 0. This helped me separate shows that received a low rating from shows that someone simply had not watched.
+
+# Database Design
+
+I used three tables in my PostgreSQL database: users, shows, and ratings. The users table stores the names of the people who gave ratings. The shows table stores the names and start years of the six TV shows. The ratings table connects the users and shows and stores each rating.I used separate tables so that the same information did not have to be repeated. The ratings table uses the IDs from the other two tables to connect everything together.
+
+*SQL Database*
+
+I created the three tables using SQL in PostgreSQL. I also used SQL to add the participants, shows, and ratings to the database.
+
+### Creating the Tables
+
+CREATE TABLE users (
+
+user_id SERIAL PRIMARY KEY,
+
+name VARCHAR(100) NOT NULL
+
+);
+
+CREATE TABLE shows (
+
+show_id SERIAL PRIMARY KEY,
+
+title VARCHAR(200) NOT NULL,
+
+year_started INTEGER
+
+);
+
+CREATE TABLE ratings (
+
+user_id INTEGER REFERENCES users(user_id),
+
+show_id INTEGER REFERENCES shows(show_id),
+
+rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+
+PRIMARY KEY (user_id, show_id)
+
+);
+
+## SQL that populated the names:
+
+INSERT INTO users (name)
+
+VALUES
+
+('Alexa'),
+
+('Jesse'),
+
+('Keila'),
+
+('Lisa'),
+
+('Raymond');
+
+## SQL that populated the show years
+
+INSERT INTO shows (title, year_started)
+
+VALUES
+
+('The Last of Us', 2023),
+
+('Wednesday', 2022),
+
+('The Bear', 2022),
+
+('Bridgerton', 2020),
+
+('Stranger Things', 2016),
+
+('Only Murders in the Building', 2021)
+
+## Loading Data into R
+
+After creating the database, I connected PostgreSQL to R using the `DBI` and `RPostgres` packages. I used a SQL query to bring the ratings into R as a dataframe. This allowed me to use R to look at the data and create visualizations.
+
+```         
+library(DBI) library(RPostgres)  con <- dbConnect(   RPostgres::Postgres(),   dbname = Sys.getenv("PGDATABASE"),   host = Sys.getenv("PGHOST"),   port = Sys.getenv("PGPORT"),   user = Sys.getenv("PGUSER"),   password = Sys.getenv("PGPASSWORD")
+```
+
+ratings_df \<- dbGetQuery(
+con,
+"
+SELECT
+u.name,
+s.title,
+s.year_started,
+r.rating
+FROM users u
+CROSS JOIN shows s
+LEFT JOIN ratings r
+ON u.user_id = r.user_id
+AND s.show_id = r.show_id
+ORDER BY u.name, s.title;
+"
+)
+
+ratings_df
+
+## Missing Data
+
+Not every participant had seen every show, so some ratings were missing. I represented these missing ratings as `NA` instead of using 0. I excluded the `NA` values when calculating the average rating. This way, a person who did not watch a show was not treated as giving the show a low rating.
+
+The code I used for the missing values: **colSums(is.na(ratings_df))**
+
+## Analysis
+
+I used R to calculate the average rating for each show. I also counted the number of ratings for each show. Missing ratings were ignored when calculating the averages.
+
+```         
+library(dplyr)  show_summary <- ratings_df %>%   group_by(title) %>%   summarise(     average_rating = mean(rating, na.rm = TRUE),     number_of_ratings = sum(!is.na(rating)),     .groups = "drop"   ) %>%   arrange(desc(average_rating))  show_summary
+```
+
+The Bear had the highest average rating at 4.75 out of 5. Stranger Things had an average of 4.60. Bridgerton, Wednesday, and The Last of Us each had an average of 4.50. Only Murders in the Building had the lowest average at 4.25.
+
+## Individual Ratings
+
+I also wanted to compare the ratings given by each participant. This shows how individual ratings differed from the overall averages.
+
+```         
+ggplot(ratings_df, aes(x = title, y = rating, fill = name)) +   geom_col(position = "dodge", na.rm = TRUE) +   labs(     title = "TV Show Ratings by Participant",     x = "TV Show",     y = "Rating (1–5)",     fill = "Participant"   ) +   coord_flip()
+```
+
+## Conclusion
+
+Overall, The Bear received the highest average rating from the people in this dataset, with a score of 4.75 out of 5. Stranger Things had the next highest average at 4.60, while Bridgerton, Wednesday, and The Last of Us all had an average of 4.50. Only Murders in the Building had the lowest average at 4.25.
+
+This project helped me practice using PostgreSQL to store and organize data and R to analyze and visualize it. I also learned how to handle missing ratings without treating them as zero. Since the dataset only included five people, these results should not be used to represent everyone's opinions about these shows.
