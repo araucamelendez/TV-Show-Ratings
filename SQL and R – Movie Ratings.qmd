@@ -1,0 +1,221 @@
+---
+title: "SQL and R – Movie Ratings"
+author: "Arauca Melendez"
+format: html
+editor: visual
+---
+
+# Introduction
+
+For this project, I wanted to see how people rated six popular TV shows. I used The Last of Us, Wednesday, The Bear, Bridgerton, Stranger Things, and Only Murders in the Building. I collected ratings on a scale from 1 to 5 and used PostgreSQL to store the data. I then connected the database to R to look at the ratings and create charts.
+
+# Data Collection
+
+I asked five people to rate the shows they had watched on a scale from 1 to 5, with 1 being the lowest rating and 5 being the highest. Since not everyone had watched every show, some ratings were missing. I left those ratings blank instead of giving them a score of 0. This helped me separate shows that received a low rating from shows that someone simply had not watched.
+
+# Database Design
+
+I used three tables in my PostgreSQL database: users, shows, and ratings. The users table stores the names of the people who gave ratings. The shows table stores the names and start years of the six TV shows. The ratings table connects the users and shows and stores each rating.I used separate tables so that the same information did not have to be repeated. The ratings table uses the IDs from the other two tables to connect everything together.
+
+# Creating the SQL Database
+
+*SQL Database*
+
+I created the three tables using SQL in PostgreSQL. I also used SQL to add the participants, shows, and ratings to the database.
+
+## Creating the users table
+
+```{sql connection=}
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
+);
+```
+
+## Creating the shows table
+
+```{sql connection=}
+CREATE TABLE shows (
+    show_id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    year_started INTEGER
+);
+```
+
+## Creating the ratings table
+
+```{sql connection=}
+CREATE TABLE ratings (
+    user_id INTEGER REFERENCES users(user_id),
+    show_id INTEGER REFERENCES shows(show_id),
+    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    PRIMARY KEY (user_id, show_id)
+);
+```
+
+## Checking my table
+
+```{sql connection=}
+SELECT * FROM users;
+SELECT * FROM shows;
+SELECT * FROM ratings;
+```
+
+## Join
+
+I used a JOIN to combine the three tables. The ratings table contains the IDs, so I joined it with the users and shows tables to make the results easier to read.
+
+```{sql connection=}
+SELECT
+    u.name,
+    s.title,
+    s.year_started,
+    r.rating
+FROM ratings r
+JOIN users u
+    ON r.user_id = u.user_id
+JOIN shows s
+    ON r.show_id = s.show_id
+ORDER BY u.name, s.title;
+```
+
+## Adding Participants
+
+```{sql connection=}
+INSERT INTO users (name)
+VALUES
+    ('Alexa'),
+    ('Jesse'),
+    ('Keila'),
+    ('Lisa'),
+    ('Raymond');
+```
+
+## Adding the shows
+
+```{sql connection=}
+INSERT INTO shows (title, year_started)
+VALUES
+    ('The Last of Us', 2023),
+    ('Wednesday', 2022),
+    ('The Bear', 2022),
+    ('Bridgerton', 2020),
+    ('Stranger Things', 2016),
+    ('Only Murders in the Building', 2021);
+```
+
+## Adding the ratings
+
+```{sql connection=}
+INSERT INTO ratings (user_id, show_id, rating)
+VALUES
+    -- Alexa
+    (1, 1, 5),
+    (1, 2, 4),
+    (1, 3, 5),
+    (1, 4, 4),
+    (1, 5, 5),
+    (1, 6, 4),
+
+    -- Jesse
+    (2, 1, 4),
+    (2, 2, 5),
+    (2, 4, 5),
+    (2, 5, 4),
+    (2, 6, 5),
+
+    -- Lisa
+    (3, 1, 5),
+    (3, 2, 4),
+    (3, 3, 4),
+    (3, 5, 5),
+    (3, 6, 4),
+
+    -- Keila
+    (4, 2, 5),
+    (4, 3, 5),
+    (4, 4, 4),
+    (4, 5, 4),
+
+    -- Raymond
+    (5, 1, 4),
+    (5, 3, 5),
+    (5, 4, 5),
+    (5, 5, 5),
+    (5, 6, 4);
+```
+
+## Combining the Tables
+
+```{sql connection=}
+SELECT
+    u.name,
+    s.title,
+    s.year_started,
+    r.rating
+FROM ratings r
+JOIN users u
+    ON r.user_id = u.user_id
+JOIN shows s
+    ON r.show_id = s.show_id
+ORDER BY u.name, s.title;
+```
+
+## Calculating the Averages in SQL
+
+I used `AVG()` to calculate the average rating for each show. I used `COUNT()` to see how many ratings each show received. I used a `LEFT JOIN` so that the shows table remained the main table when looking for ratings.
+
+```{sql connection=}
+SELECT
+    s.title,
+    ROUND(AVG(r.rating), 2) AS average_rating,
+    COUNT(r.rating) AS number_of_ratings
+FROM shows s
+LEFT JOIN ratings r
+    ON s.show_id = r.show_id
+GROUP BY s.show_id, s.title
+ORDER BY average_rating DESC;
+```
+
+| Show                         | Average Rating | Number of Ratings |
+|------------------------------|---------------:|------------------:|
+| The Bear                     |           4.75 |                 4 |
+| Stranger Things              |           4.60 |                 5 |
+| Bridgerton                   |           4.50 |                 4 |
+| Wednesday                    |           4.50 |                 4 |
+| The Last of Us               |           4.50 |                 4 |
+| Only Murders in the Building |           4.25 |                 4 |
+
+# Loading Data into R
+
+After creating the database, I connected PostgreSQL to R using the `DBI` and `RPostgres` packages. I used a SQL query to bring the ratings into R as a dataframe. This allowed me to use R to look at the data and create visualizations.
+
+```{r}
+library(DBI)
+library(RPostgres)
+library(dplyr)
+library(ggplot2)
+```
+
+# Analyzing the data
+
+I grouped the data by show and calculated the average rating for each one. I used `na.rm = TRUE` so that missing ratings would not affect the averages. I also counted the number of ratings each show received.
+
+```{r}
+ggplot(show_summary, aes(x = reorder(title, average_rating),
+                         y = average_rating)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Average Ratings by TV Show",
+    x = "TV Show",
+    y = "Average Rating"
+  )
+```
+The Bear received the highest average rating at 4.75. Only Murders in the Building had the lowest average rating at 4.25. Overall, the average ratings were fairly high, ranging from 4.25 to 4.75.
+
+# Conclusion
+
+# Conclusion
+
+For this project, I collected ratings from five people for six television shows and stored the data in a PostgreSQL database. I created tables for the users, shows, and ratings and used SQL to connect the tables and find the average ratings. I then connected PostgreSQL to R and loaded the data into a dataframe. In R, I checked the data, handled missing ratings, calculated the averages, and created charts. The Bear had the highest average rating at 4.75, while Only Murders in the Building had the lowest at 4.25. Overall, the ratings were high, with all six shows having an average rating of at least 4.25. One limitation is the small sample size. Only five people provided ratings, so the results only represent this group and cannot be used to represent the general population. This project helped me understand how SQL and R can work together. PostgreSQL was useful for storing and organizing the data, while R was useful for analyzing and visualizing it.
